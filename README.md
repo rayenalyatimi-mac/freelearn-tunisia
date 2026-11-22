@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FreeLearn Tunisia
 
-## Getting Started
+A free, non-profit student project that helps Tunisian university students follow a clear learning path made of free online courses.
 
-First, run the development server:
+**Live site:** https://freelearn-tunisia.vercel.app
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## What it does
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Shows a learning path (first path: Digital Marketing) in a recommended order.
+- Locks each course until the previous one is marked as completed.
+- States clearly what is free: course access and certificate are checked separately, using the provider's own wording (certificate, award...).
+- Shows the date each course was last verified on its official page.
+- Saves progress in the student's own browser. Completion is self-declared, and an optional certificate link can be added. FreeLearn does not verify it.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Principles
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- A course is added only after it is checked on the provider's official page.
+- No course content is copied. Every course links to its original provider.
+- The verification notes are public: see docs/course-verification.md.
 
-## Learn More
+## Tech
 
-To learn more about Next.js, take a look at the following resources:
+Next.js, TypeScript, Tailwind CSS, hosted on Vercel.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Run it locally
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Install the dependencies with `npm install`, start the site with `npm run dev`, then open http://localhost:3000.
 
-## Deploy on Vercel
+## Status
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Early version, built and tested by one student. Currently 2 verified courses; more are being verified one at a time.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## License
+
+No license has been chosen yet, so all rights are reserved for now.
