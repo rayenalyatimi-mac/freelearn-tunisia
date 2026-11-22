@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -18,12 +20,12 @@ export default function Home() {
           about what is free and what is not.
         </p>
 
-        <a
-          href="#"
+        <Link
+          href="/path"
           className="mt-10 inline-block rounded-lg bg-emerald-600 px-6 py-3 font-semibold text-white hover:bg-emerald-700"
         >
           Start the Digital Marketing path
-        </a>
+        </Link>
       </section>
     </main>
   );
