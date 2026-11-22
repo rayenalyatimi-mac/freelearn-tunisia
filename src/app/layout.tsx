@@ -12,10 +12,27 @@ const body = Source_Sans_3({
   variable: "--font-source",
 });
 
+const siteUrl = "https://freelearn-tunisia.vercel.app";
+const title = "FreeLearn Tunisia: free courses, checked one by one";
+const description =
+  "A free learning path for Tunisian university students. Every course is checked on its official page, with the course and the certificate priced separately.";
+
 export const metadata: Metadata = {
-  title: "FreeLearn Tunisia",
-  description:
-    "Free online courses, checked one by one, in a clear learning path for Tunisian university students.",
+  metadataBase: new URL(siteUrl),
+  title,
+  description,
+  openGraph: {
+    title,
+    description,
+    url: siteUrl,
+    siteName: "FreeLearn Tunisia",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+  },
 };
 
 export default function RootLayout({
