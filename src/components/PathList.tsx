@@ -5,16 +5,32 @@ import type { Course } from "@/data/courses";
 
 const STORAGE_KEY = "freelearn-progress-v1";
 
-// For each completed course id we remember the date it was confirmed.
-type Progress = Record<string, { completedAt: string }>;
+// For each completed course id we remember the date it was confirmed,
+// and optionally a link the student added as evidence.
+type Progress = Record<string, { completedAt: string; certificateUrl?: string }>;
 
 function capitalize(text: string) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+// Only normal web links are accepted, so nothing unsafe is stored or shown.
+function cleanUrl(input: string): string | null {
+  try {
+    const url = new URL(input.trim());
+    if (url.protocol === "https:" || url.protocol === "http:") {
+      return url.toString();
+    }
+  } catch {
+    // Not a valid link
+  }
+  return null;
+}
+
 export default function PathList({ courses }: { courses: Course[] }) {
   const [progress, setProgress] = useState<Progress>({});
   const [loaded, setLoaded] = useState(false);
+  const [evidence, setEvidence] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Load saved progress from this browser once, when the page opens
   useEffect(() => {
@@ -42,8 +58,27 @@ export default function PathList({ courses }: { courses: Course[] }) {
   }
 
   function markCompleted(id: string) {
+    const raw = (evidence[id] ?? "").trim();
+    let certificateUrl: string | undefined;
+
+    if (raw) {
+      const cleaned = cleanUrl(raw);
+      if (!cleaned) {
+        setErrors({
+          ...errors,
+          [id]: "Please paste a full link starting with https:// (or leave the field empty).",
+        });
+        return;
+      }
+      certificateUrl = cleaned;
+    }
+
+    setErrors({ ...errors, [id]: "" });
     const today = new Date().toISOString().slice(0, 10);
-    save({ ...progress, [id]: { completedAt: today } });
+    save({
+      ...progress,
+      [id]: { completedAt: today, ...(certificateUrl ? { certificateUrl } : {}) },
+    });
   }
 
   function undoCompletion(id: string) {
@@ -92,6 +127,8 @@ export default function PathList({ courses }: { courses: Course[] }) {
           // Undo is only allowed on the latest completed course,
           // so later courses never stay unlocked by mistake.
           const canUndo = isCompleted && !(next && progress[next.id]);
+          const savedLink = progress[course.id]?.certificateUrl;
+          const safeLink = savedLink ? cleanUrl(savedLink) : null;
 
           if (!isUnlocked) {
             return (
@@ -179,7 +216,7 @@ export default function PathList({ courses }: { courses: Course[] }) {
                 </div>
               </dl>
 
-              <div className="mt-6 flex flex-wrap items-center gap-3">
+              <div className="mt-6">
                 <a
                   href={course.url}
                   target="_blank"
@@ -188,39 +225,74 @@ export default function PathList({ courses }: { courses: Course[] }) {
                 >
                   Go to course (opens {course.provider})
                 </a>
-
-                {!isCompleted && (
-                  <button
-                    type="button"
-                    onClick={() => markCompleted(course.id)}
-                    className="rounded-lg border border-emerald-600 px-5 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
-                  >
-                    Mark as Completed
-                  </button>
-                )}
-
-                {isCompleted && (
-                  <span className="text-sm font-medium text-emerald-700">
-                    Completed on {progress[course.id].completedAt}
-                  </span>
-                )}
-
-                {canUndo && (
-                  <button
-                    type="button"
-                    onClick={() => undoCompletion(course.id)}
-                    className="text-sm text-slate-500 underline hover:text-slate-700"
-                  >
-                    Undo
-                  </button>
-                )}
               </div>
 
               {!isCompleted && (
-                <p className="mt-3 text-xs text-slate-500">
-                  Opening the course does not count as completion. Come back
-                  and confirm once you have really finished it.
-                </p>
+                <div className="mt-5 rounded-lg bg-slate-50 p-4">
+                  <label
+                    htmlFor={`evidence-${course.id}`}
+                    className="block text-sm font-medium text-slate-700"
+                  >
+                    Certificate or award link (optional)
+                  </label>
+                  <input
+                    id={`evidence-${course.id}`}
+                    type="url"
+                    placeholder="https://..."
+                    value={evidence[course.id] ?? ""}
+                    onChange={(e) =>
+                      setEvidence({ ...evidence, [course.id]: e.target.value })
+                    }
+                    className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                  {errors[course.id] && (
+                    <p className="mt-2 text-sm text-red-600">
+                      {errors[course.id]}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => markCompleted(course.id)}
+                    className="mt-3 rounded-lg border border-emerald-600 px-5 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                  >
+                    Mark as Completed
+                  </button>
+                  <p className="mt-3 text-xs text-slate-500">
+                    Opening the course does not count as completion. Come back
+                    and confirm once you have really finished it. The link is
+                    optional and is not checked by FreeLearn.
+                  </p>
+                </div>
+              )}
+
+              {isCompleted && (
+                <div className="mt-5 space-y-2 text-sm">
+                  <p className="font-medium text-emerald-700">
+                    Completed on {progress[course.id].completedAt}
+                  </p>
+                  {safeLink && (
+                    <p className="text-slate-600">
+                      Your evidence link (not verified by FreeLearn):{" "}
+                      <a
+                        href={safeLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-emerald-700 underline"
+                      >
+                        open
+                      </a>
+                    </p>
+                  )}
+                  {canUndo && (
+                    <button
+                      type="button"
+                      onClick={() => undoCompletion(course.id)}
+                      className="text-slate-500 underline hover:text-slate-700"
+                    >
+                      Undo
+                    </button>
+                  )}
+                </div>
               )}
             </li>
           );
