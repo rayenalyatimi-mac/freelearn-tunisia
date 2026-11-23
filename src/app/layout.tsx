@@ -1,8 +1,9 @@
-import CreatorName from "@/components/CreatorName";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Bricolage_Grotesque, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
+import { LanguageProvider } from "@/components/LanguageProvider";
+import SiteHeader from "@/components/SiteHeader";
+import SiteFooter from "@/components/SiteFooter";
 
 const display = Bricolage_Grotesque({
   subsets: ["latin"],
@@ -44,51 +45,11 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body className="flex min-h-screen flex-col font-sans antialiased">
-        <header className="border-b border-deep/10">
-          <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-            <Link href="/" className="font-display text-lg font-bold text-deep">
-              FreeLearn Tunisia
-            </Link>
-            <nav className="flex items-center gap-5">
-              <Link
-                href="/path"
-                className="text-sm font-semibold text-sea hover:underline"
-              >
-                <span className="sm:hidden">Path</span><span className="hidden sm:inline">Digital Marketing path</span>
-              </Link>
-              <Link
-                href="/account"
-                className="rounded-full border-2 border-sea px-4 py-1.5 text-sm font-semibold text-sea hover:bg-sea hover:text-white"
-              >
-                Account
-              </Link>
-            </nav>
-          </div>
-        </header>
-
-        <div className="flex-1">{children}</div>
-
-        <footer className="border-t border-deep/10">
-          <div className="mx-auto max-w-5xl px-6 py-6 text-sm text-deep/70">
-            <p>
-              A free, non-profit student project by{" "}
-              <strong className="font-semibold text-deep">
-                <CreatorName />
-              </strong>
-              .{" "}
-              <Link
-                href="/about"
-                className="font-semibold text-sea underline underline-offset-4"
-              >
-                About
-              </Link>
-            </p>
-            <p className="mt-1">
-              Not affiliated with the course providers. Always confirm prices
-              and conditions on the provider&apos;s own page.
-            </p>
-          </div>
-        </footer>
+        <LanguageProvider>
+          <SiteHeader />
+          <div className="flex-1">{children}</div>
+          <SiteFooter />
+        </LanguageProvider>
       </body>
     </html>
   );
