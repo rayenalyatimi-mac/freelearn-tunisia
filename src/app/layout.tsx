@@ -54,7 +54,7 @@ export default function RootLayout({
                 href="/path"
                 className="text-sm font-semibold text-sea hover:underline"
               >
-                Digital Marketing path
+                <span className="sm:hidden">Path</span><span className="hidden sm:inline">Digital Marketing path</span>
               </Link>
               <Link
                 href="/account"
