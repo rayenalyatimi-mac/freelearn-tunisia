@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { Course } from "@/data/courses";
+import { createClient } from "@/lib/supabase/client";
 
 const STORAGE_KEY = "freelearn-progress-v1";
 
@@ -26,38 +29,132 @@ function cleanUrl(input: string): string | null {
   return null;
 }
 
+function readLocal(): Progress {
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === "object") {
+        return parsed as Progress;
+      }
+    }
+  } catch {
+    // Unreadable saved data: start fresh
+  }
+  return {};
+}
+
+function writeLocal(next: Progress) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Saving can fail (e.g. private mode); the page still works for now
+  }
+}
+
 export default function PathList({ courses }: { courses: Course[] }) {
+  const [supabase] = useState<SupabaseClient | null>(() =>
+    typeof window === "undefined" ? null : createClient()
+  );
+  const [user, setUser] = useState<User | null>(null);
   const [progress, setProgress] = useState<Progress>({});
   const [loaded, setLoaded] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState("");
   const [evidence, setEvidence] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Load saved progress from this browser once, when the page opens
+  // On page load: find out who is logged in, then load their progress
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === "object") {
-          setProgress(parsed);
+    let cancelled = false;
+
+    async function init() {
+      const local = readLocal();
+      let currentUser: User | null = null;
+      if (supabase) {
+        const { data } = await supabase.auth.getUser();
+        currentUser = data.user;
+      }
+      if (cancelled) return;
+
+      // Not logged in: progress stays in this browser
+      if (!currentUser || !supabase) {
+        setUser(null);
+        setProgress(local);
+        setLoaded(true);
+        return;
+      }
+
+      // Logged in: the database is the source of truth
+      setUser(currentUser);
+      const { data: rows, error } = await supabase
+        .from("completions")
+        .select("course_id, completed_at, certificate_url");
+      if (cancelled) return;
+
+      if (error) {
+        setSaveError("Could not load your saved progress. Please reload the page.");
+        setLoaded(true);
+        return;
+      }
+
+      const fromDb: Progress = {};
+      for (const row of rows ?? []) {
+        fromDb[row.course_id] = {
+          completedAt: row.completed_at,
+          ...(row.certificate_url ? { certificateUrl: row.certificate_url } : {}),
+        };
+      }
+
+      // One-time merge of progress made while logged out
+      const knownIds = new Set(courses.map((c) => c.id));
+      const today = new Date().toISOString().slice(0, 10);
+      const toUpload = Object.entries(local).filter(
+        ([id]) => knownIds.has(id) && !fromDb[id]
+      );
+      if (toUpload.length > 0) {
+        const payload = toUpload.map(([id, value]) => ({
+          user_id: currentUser.id,
+          course_id: id,
+          completed_at: /^\d{4}-\d{2}-\d{2}$/.test(value.completedAt)
+            ? value.completedAt
+            : today,
+          certificate_url: value.certificateUrl
+            ? cleanUrl(value.certificateUrl)
+            : null,
+        }));
+        const { error: uploadError } = await supabase
+          .from("completions")
+          .upsert(payload, { onConflict: "user_id,course_id" });
+        if (!uploadError) {
+          for (const item of payload) {
+            fromDb[item.course_id] = {
+              completedAt: item.completed_at,
+              ...(item.certificate_url
+                ? { certificateUrl: item.certificate_url }
+                : {}),
+            };
+          }
+          try {
+            window.localStorage.removeItem(STORAGE_KEY);
+          } catch {
+            // Nothing to do if the browser refuses
+          }
         }
       }
-    } catch {
-      // If saved data is unreadable, we simply start fresh
-    }
-    setLoaded(true);
-  }, []);
 
-  function save(next: Progress) {
-    setProgress(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      // Saving can fail (e.g. private mode); the page still works for now
+      if (cancelled) return;
+      setProgress(fromDb);
+      setLoaded(true);
     }
-  }
 
-  function markCompleted(id: string) {
+    init();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, courses]);
+
+  async function markCompleted(id: string) {
     const raw = (evidence[id] ?? "").trim();
     let certificateUrl: string | undefined;
 
@@ -74,17 +171,68 @@ export default function PathList({ courses }: { courses: Course[] }) {
     }
 
     setErrors({ ...errors, [id]: "" });
+    setSaveError("");
+
+    if (user && supabase) {
+      setBusyId(id);
+      const { data, error } = await supabase
+        .from("completions")
+        .upsert(
+          {
+            user_id: user.id,
+            course_id: id,
+            certificate_url: certificateUrl ?? null,
+          },
+          { onConflict: "user_id,course_id" }
+        )
+        .select("completed_at")
+        .single();
+      setBusyId(null);
+      if (error || !data) {
+        setSaveError("Could not save. Check your connection and try again.");
+        return;
+      }
+      setProgress({
+        ...progress,
+        [id]: {
+          completedAt: data.completed_at,
+          ...(certificateUrl ? { certificateUrl } : {}),
+        },
+      });
+      return;
+    }
+
+    // Not logged in: save in this browser only
     const today = new Date().toISOString().slice(0, 10);
-    save({
+    const next = {
       ...progress,
       [id]: { completedAt: today, ...(certificateUrl ? { certificateUrl } : {}) },
-    });
+    };
+    setProgress(next);
+    writeLocal(next);
   }
 
-  function undoCompletion(id: string) {
+  async function undoCompletion(id: string) {
+    setSaveError("");
+
+    if (user && supabase) {
+      setBusyId(id);
+      const { error } = await supabase
+        .from("completions")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("course_id", id);
+      setBusyId(null);
+      if (error) {
+        setSaveError("Could not undo. Check your connection and try again.");
+        return;
+      }
+    }
+
     const next = { ...progress };
     delete next[id];
-    save(next);
+    setProgress(next);
+    if (!user) writeLocal(next);
   }
 
   if (!loaded) {
@@ -109,6 +257,25 @@ export default function PathList({ courses }: { courses: Course[] }) {
             style={{ width: `${percent}%` }}
           />
         </div>
+        <p className="mt-3 text-sm text-deep/70">
+          {user ? (
+            "You are logged in: your progress is saved to your account."
+          ) : (
+            <>
+              Your progress is saved in this browser only.{" "}
+              <Link
+                href="/account"
+                className="font-semibold text-sea underline underline-offset-4"
+              >
+                Log in or create an account
+              </Link>{" "}
+              to keep it on every device.
+            </>
+          )}
+        </p>
+        {saveError && (
+          <p className="mt-2 text-sm font-semibold text-red-700">{saveError}</p>
+        )}
       </div>
 
       {completedCount === courses.length && (
@@ -129,6 +296,7 @@ export default function PathList({ courses }: { courses: Course[] }) {
           const canUndo = isCompleted && !(next && progress[next.id]);
           const savedLink = progress[course.id]?.certificateUrl;
           const safeLink = savedLink ? cleanUrl(savedLink) : null;
+          const isBusy = busyId === course.id;
 
           const markerBase =
             "absolute -left-[3.07rem] top-5 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold";
@@ -256,9 +424,10 @@ export default function PathList({ courses }: { courses: Course[] }) {
                     <button
                       type="button"
                       onClick={() => markCompleted(course.id)}
-                      className="mt-3 rounded-full border-2 border-sea px-6 py-2 text-sm font-semibold text-sea hover:bg-sea hover:text-white"
+                      disabled={isBusy}
+                      className="mt-3 rounded-full border-2 border-sea px-6 py-2 text-sm font-semibold text-sea hover:bg-sea hover:text-white disabled:opacity-60"
                     >
-                      Mark as Completed
+                      {isBusy ? "Saving..." : "Mark as Completed"}
                     </button>
                     <p className="mt-3 text-xs text-deep/70">
                       Opening the course does not count as completion. Come
@@ -290,9 +459,10 @@ export default function PathList({ courses }: { courses: Course[] }) {
                       <button
                         type="button"
                         onClick={() => undoCompletion(course.id)}
-                        className="text-deep/70 underline hover:text-deep"
+                        disabled={isBusy}
+                        className="text-deep/70 underline hover:text-deep disabled:opacity-60"
                       >
-                        Undo
+                        {isBusy ? "Saving..." : "Undo"}
                       </button>
                     )}
                   </div>
