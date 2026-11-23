@@ -48,12 +48,18 @@ export default function RootLayout({
             <Link href="/" className="font-display text-lg font-bold text-deep">
               FreeLearn Tunisia
             </Link>
-            <nav>
+            <nav className="flex items-center gap-5">
               <Link
                 href="/path"
                 className="text-sm font-semibold text-sea hover:underline"
               >
                 Digital Marketing path
+              </Link>
+              <Link
+                href="/account"
+                className="rounded-full border-2 border-sea px-4 py-1.5 text-sm font-semibold text-sea hover:bg-sea hover:text-white"
+              >
+                Account
               </Link>
             </nav>
           </div>
