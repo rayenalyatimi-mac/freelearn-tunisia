@@ -68,10 +68,25 @@ export default function RootLayout({
         <div className="flex-1">{children}</div>
 
         <footer className="border-t border-deep/10">
-          <p className="mx-auto max-w-5xl px-6 py-6 text-sm text-deep/70">
-            A free student project. Not affiliated with the course providers.
-            Always confirm prices and conditions on the provider&apos;s own page.
-          </p>
+          <div className="mx-auto max-w-5xl px-6 py-6 text-sm text-deep/70">
+            <p>
+              A free, non-profit student project by{" "}
+              <strong className="font-semibold text-deep">
+                Mouhamed Rayen Alyatimi
+              </strong>
+              .{" "}
+              <Link
+                href="/about"
+                className="font-semibold text-sea underline underline-offset-4"
+              >
+                About
+              </Link>
+            </p>
+            <p className="mt-1">
+              Not affiliated with the course providers. Always confirm prices
+              and conditions on the provider&apos;s own page.
+            </p>
+          </div>
         </footer>
       </body>
     </html>
