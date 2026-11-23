@@ -1,3 +1,4 @@
+import CreatorName from "@/components/CreatorName";
 export const metadata = {
   title: "About FreeLearn Tunisia",
 };
@@ -18,7 +19,7 @@ export default function AboutPage() {
           built FreeLearn to put checked free courses in one clear path, one
           course at a time.
         </p>
-        <p className="mt-3 font-semibold">Mouhamed Rayen Alyatimi</p>
+        <p className="mt-3 font-semibold"><CreatorName /></p>
       </section>
 
       <section className="mt-8">

@@ -1,3 +1,4 @@
+import CreatorName from "@/components/CreatorName";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Bricolage_Grotesque, Source_Sans_3 } from "next/font/google";
@@ -72,7 +73,7 @@ export default function RootLayout({
             <p>
               A free, non-profit student project by{" "}
               <strong className="font-semibold text-deep">
-                Mouhamed Rayen Alyatimi
+                <CreatorName />
               </strong>
               .{" "}
               <Link
