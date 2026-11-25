@@ -5,16 +5,13 @@ import Link from "next/link";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { Course } from "@/data/courses";
 import { createClient } from "@/lib/supabase/client";
+import { useLanguage } from "@/components/LanguageProvider";
 
 const STORAGE_KEY = "freelearn-progress-v1";
 
 // For each completed course id we remember the date it was confirmed,
 // and optionally a link the student added as evidence.
 type Progress = Record<string, { completedAt: string; certificateUrl?: string }>;
-
-function capitalize(text: string) {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
 
 // Only normal web links are accepted, so nothing unsafe is stored or shown.
 function cleanUrl(input: string): string | null {
@@ -53,6 +50,9 @@ function writeLocal(next: Progress) {
 }
 
 export default function PathList({ courses }: { courses: Course[] }) {
+  const { t } = useLanguage();
+  const p = t.pathList;
+
   const [supabase] = useState<SupabaseClient | null>(() =>
     typeof window === "undefined" ? null : createClient()
   );
@@ -93,7 +93,7 @@ export default function PathList({ courses }: { courses: Course[] }) {
       if (cancelled) return;
 
       if (error) {
-        setSaveError("Could not load your saved progress. Please reload the page.");
+        setSaveError("load");
         setLoaded(true);
         return;
       }
@@ -161,10 +161,7 @@ export default function PathList({ courses }: { courses: Course[] }) {
     if (raw) {
       const cleaned = cleanUrl(raw);
       if (!cleaned) {
-        setErrors({
-          ...errors,
-          [id]: "Please paste a full link starting with https:// (or leave the field empty).",
-        });
+        setErrors({ ...errors, [id]: "invalid" });
         return;
       }
       certificateUrl = cleaned;
@@ -189,7 +186,7 @@ export default function PathList({ courses }: { courses: Course[] }) {
         .single();
       setBusyId(null);
       if (error || !data) {
-        setSaveError("Could not save. Check your connection and try again.");
+        setSaveError("save");
         return;
       }
       setProgress({
@@ -224,7 +221,7 @@ export default function PathList({ courses }: { courses: Course[] }) {
         .eq("course_id", id);
       setBusyId(null);
       if (error) {
-        setSaveError("Could not undo. Check your connection and try again.");
+        setSaveError("undo");
         return;
       }
     }
@@ -236,8 +233,17 @@ export default function PathList({ courses }: { courses: Course[] }) {
   }
 
   if (!loaded) {
-    return <p className="mt-10 text-deep/60">Loading your progress...</p>;
+    return <p className="mt-10 text-deep/60">{p.loading}</p>;
   }
+
+  const saveErrorText =
+    saveError === "load"
+      ? p.loadError
+      : saveError === "save"
+        ? p.saveFail
+        : saveError === "undo"
+          ? p.undoFail
+          : "";
 
   const completedCount = courses.filter((c) => progress[c.id]).length;
   const percent = Math.round((completedCount / courses.length) * 100);
@@ -246,9 +252,9 @@ export default function PathList({ courses }: { courses: Course[] }) {
     <div className="mt-10">
       <div>
         <div className="flex items-baseline justify-between">
-          <span className="font-display text-lg font-bold">Your progress</span>
+          <span className="font-display text-lg font-bold">{p.progress}</span>
           <span className="text-sm text-deep/70">
-            {completedCount} of {courses.length} completed
+            {p.completedOf(completedCount, courses.length)}
           </span>
         </div>
         <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-sand">
@@ -259,30 +265,29 @@ export default function PathList({ courses }: { courses: Course[] }) {
         </div>
         <p className="mt-3 text-sm text-deep/70">
           {user ? (
-            "You are logged in: your progress is saved to your account."
+            p.loggedIn
           ) : (
             <>
-              Your progress is saved in this browser only.{" "}
+              {p.browserOnly}{" "}
               <Link
                 href="/account"
                 className="font-semibold text-sea underline underline-offset-4"
               >
-                Log in or create an account
+                {p.loginLink}
               </Link>{" "}
-              to keep it on every device.
+              {p.loginSuffix}
             </>
           )}
         </p>
-        {saveError && (
-          <p className="mt-2 text-sm font-semibold text-red-700">{saveError}</p>
+        {saveErrorText && (
+          <p className="mt-2 text-sm font-semibold text-red-700">
+            {saveErrorText}
+          </p>
         )}
       </div>
 
       {completedCount === courses.length && (
-        <p className="mt-6 rounded-2xl bg-sand p-4 font-medium">
-          Well done! You have completed every course available so far. More
-          courses are being verified and will be added soon.
-        </p>
+        <p className="mt-6 rounded-2xl bg-sand p-4 font-medium">{p.wellDone}</p>
       )}
 
       <ol className="relative mt-10 space-y-6 border-l-2 border-dashed border-deep/25 pl-8">
@@ -297,6 +302,14 @@ export default function PathList({ courses }: { courses: Course[] }) {
           const savedLink = progress[course.id]?.certificateUrl;
           const safeLink = savedLink ? cleanUrl(savedLink) : null;
           const isBusy = busyId === course.id;
+
+          // French (or other) text for this course, with the English data as fallback
+          const ct = p.courseText[course.id];
+          const description = ct?.description ?? course.description;
+          const duration = ct?.duration ?? course.duration;
+          const subtitles = ct?.subtitles ?? course.subtitles;
+          const account = ct?.account ?? course.accountRequired;
+          const languageName = p.languageNames[course.language] ?? course.language;
 
           const markerBase =
             "absolute -left-[3.07rem] top-5 flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold";
@@ -313,7 +326,7 @@ export default function PathList({ courses }: { courses: Course[] }) {
                   </h2>
                   <p className="text-sm text-deep/60">{course.provider}</p>
                   <p className="mt-2 text-sm font-semibold text-deep/70">
-                    Locked: complete course {previous.order} first.
+                    {p.locked(previous.order)}
                   </p>
                 </div>
               </li>
@@ -342,47 +355,45 @@ export default function PathList({ courses }: { courses: Course[] }) {
                 </h2>
                 <p className="text-sm text-deep/70">{course.provider}</p>
 
-                <p className="mt-4">{course.description}</p>
+                <p className="mt-4">{description}</p>
 
                 <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
                   <div>
-                    <dt className="font-semibold text-deep/60">Course access</dt>
-                    <dd>{capitalize(course.courseAccess)}</dd>
+                    <dt className="font-semibold text-deep/60">{p.labelAccess}</dt>
+                    <dd>{p.access[course.courseAccess] ?? course.courseAccess}</dd>
                   </div>
                   <div>
-                    <dt className="font-semibold text-deep/60">Reward</dt>
-                    <dd>
-                      {capitalize(course.rewardCost)} {course.rewardType}
-                    </dd>
+                    <dt className="font-semibold text-deep/60">{p.labelReward}</dt>
+                    <dd>{p.reward(course.rewardCost, course.rewardType)}</dd>
                   </div>
                   <div>
-                    <dt className="font-semibold text-deep/60">Level</dt>
+                    <dt className="font-semibold text-deep/60">{p.labelLevel}</dt>
                     <dd>
-                      {capitalize(course.level)} (
+                      {p.level[course.level] ?? course.level} (
                       {course.levelSource === "provider"
-                        ? "stated by provider"
-                        : "our assessment"}
+                        ? p.levelProvider
+                        : p.levelOurs}
                       )
                     </dd>
                   </div>
                   <div>
-                    <dt className="font-semibold text-deep/60">Duration</dt>
-                    <dd>{course.duration}</dd>
+                    <dt className="font-semibold text-deep/60">{p.labelDuration}</dt>
+                    <dd>{duration}</dd>
                   </div>
                   <div>
-                    <dt className="font-semibold text-deep/60">Language</dt>
-                    <dd>{course.language}</dd>
+                    <dt className="font-semibold text-deep/60">{p.labelLanguage}</dt>
+                    <dd>{languageName}</dd>
                   </div>
                   <div>
-                    <dt className="font-semibold text-deep/60">Subtitles</dt>
-                    <dd>{course.subtitles}</dd>
+                    <dt className="font-semibold text-deep/60">{p.labelSubtitles}</dt>
+                    <dd>{subtitles}</dd>
                   </div>
                   <div>
-                    <dt className="font-semibold text-deep/60">Account needed</dt>
-                    <dd>{course.accountRequired}</dd>
+                    <dt className="font-semibold text-deep/60">{p.labelAccount}</dt>
+                    <dd>{account}</dd>
                   </div>
                   <div>
-                    <dt className="font-semibold text-deep/60">Last verified</dt>
+                    <dt className="font-semibold text-deep/60">{p.labelVerified}</dt>
                     <dd>{course.lastVerified}</dd>
                   </div>
                 </dl>
@@ -394,7 +405,7 @@ export default function PathList({ courses }: { courses: Course[] }) {
                     rel="noopener noreferrer"
                     className="inline-block rounded-full bg-sea px-6 py-2.5 text-sm font-semibold text-white hover:bg-deep"
                   >
-                    Go to course (opens {course.provider})
+                    {p.goTo(course.provider)}
                   </a>
                 </div>
 
@@ -404,7 +415,7 @@ export default function PathList({ courses }: { courses: Course[] }) {
                       htmlFor={`evidence-${course.id}`}
                       className="block text-sm font-semibold"
                     >
-                      Certificate or award link (optional)
+                      {p.evidenceLabel}
                     </label>
                     <input
                       id={`evidence-${course.id}`}
@@ -417,9 +428,7 @@ export default function PathList({ courses }: { courses: Course[] }) {
                       className="mt-2 w-full rounded-lg border border-deep/25 bg-white px-3 py-2 text-sm"
                     />
                     {errors[course.id] && (
-                      <p className="mt-2 text-sm text-red-700">
-                        {errors[course.id]}
-                      </p>
+                      <p className="mt-2 text-sm text-red-700">{p.invalidLink}</p>
                     )}
                     <button
                       type="button"
@@ -427,31 +436,27 @@ export default function PathList({ courses }: { courses: Course[] }) {
                       disabled={isBusy}
                       className="mt-3 rounded-full border-2 border-sea px-6 py-2 text-sm font-semibold text-sea hover:bg-sea hover:text-white disabled:opacity-60"
                     >
-                      {isBusy ? "Saving..." : "Mark as Completed"}
+                      {isBusy ? p.saving : p.markCompleted}
                     </button>
-                    <p className="mt-3 text-xs text-deep/70">
-                      Opening the course does not count as completion. Come
-                      back and confirm once you have really finished it. The
-                      link is optional and is not checked by FreeLearn.
-                    </p>
+                    <p className="mt-3 text-xs text-deep/70">{p.openingNote}</p>
                   </div>
                 )}
 
                 {isCompleted && (
                   <div className="mt-5 space-y-2 text-sm">
                     <p className="font-semibold text-sea">
-                      Completed on {progress[course.id].completedAt}
+                      {p.completedOn(progress[course.id].completedAt)}
                     </p>
                     {safeLink && (
                       <p className="text-deep/80">
-                        Your evidence link (not verified by FreeLearn):{" "}
+                        {p.evidenceNotVerified}{" "}
                         <a
                           href={safeLink}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="font-semibold text-sea underline"
                         >
-                          open
+                          {p.open}
                         </a>
                       </p>
                     )}
@@ -462,7 +467,7 @@ export default function PathList({ courses }: { courses: Course[] }) {
                         disabled={isBusy}
                         className="text-deep/70 underline hover:text-deep disabled:opacity-60"
                       >
-                        {isBusy ? "Saving..." : "Undo"}
+                        {isBusy ? p.saving : p.undo}
                       </button>
                     )}
                   </div>
