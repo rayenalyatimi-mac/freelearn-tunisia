@@ -3,11 +3,15 @@
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import { useLanguage } from "@/components/LanguageProvider";
 
 // Same rule as the database: 3 to 20 letters, numbers, _ or -
 const NICKNAME_RULE = /^[A-Za-z0-9_-]{3,20}$/;
 
 export default function AccountPage() {
+  const { t } = useLanguage();
+  const a = t.account;
+
   const [supabase] = useState(() => createClient());
   const [user, setUser] = useState<User | null>(null);
   const [nickname, setNickname] = useState<string | null>(null);
@@ -17,8 +21,21 @@ export default function AccountPage() {
   const [password, setPassword] = useState("");
   const [newNickname, setNewNickname] = useState("");
   const [agreed, setAgreed] = useState(false);
+  // A message is either "key:<name>" (translated) or raw text from Supabase
   const [message, setMessage] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  function show(m: string) {
+    if (m.startsWith("key:")) {
+      const k = m.slice(4) as keyof typeof a;
+      const value = a[k];
+      return typeof value === "string" ? value : "";
+    }
+    return m;
+  }
 
   // Know who is logged in, and react when they log in or out
   useEffect(() => {
@@ -49,16 +66,17 @@ export default function AccountPage() {
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
     setMessage("");
+    setNotice("");
     if (!NICKNAME_RULE.test(newNickname)) {
-      setMessage("Nickname: 3 to 20 characters, using letters, numbers, _ or - only.");
+      setMessage("key:nicknameRule");
       return;
     }
     if (password.length < 8) {
-      setMessage("Password: at least 8 characters.");
+      setMessage("key:passwordRule");
       return;
     }
     if (!agreed) {
-      setMessage("Please tick the box to confirm you have read the notice.");
+      setMessage("key:agreeRule");
       return;
     }
     setBusy(true);
@@ -70,22 +88,23 @@ export default function AccountPage() {
     setBusy(false);
     if (error) {
       if (error.message.toLowerCase().includes("database error")) {
-        setMessage("That nickname is probably already taken. Please try another one.");
+        setMessage("key:nicknameTaken");
       } else if (error.message.toLowerCase().includes("already registered")) {
-        setMessage("This email already has an account. Try logging in.");
+        setMessage("key:alreadyRegistered");
       } else {
         setMessage(error.message);
       }
       return;
     }
     if (!data.session) {
-      setMessage("Account created, but email confirmation is still switched on in Supabase. Tell the site owner.");
+      setMessage("key:confirmOn");
     }
   }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setMessage("");
+    setNotice("");
     setBusy(true);
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
@@ -93,7 +112,7 @@ export default function AccountPage() {
     });
     setBusy(false);
     if (error) {
-      setMessage("Wrong email or password.");
+      setMessage("key:wrongLogin");
     }
   }
 
@@ -101,26 +120,75 @@ export default function AccountPage() {
     await supabase.auth.signOut();
     setPassword("");
     setMessage("");
+    setNotice("");
+  }
+
+  async function handleDelete() {
+    setMessage("");
+    if (confirmText !== a.deleteWord) {
+      setMessage("key:deleteConfirmMsg");
+      return;
+    }
+    setDeleting(true);
+    const { error } = await supabase.rpc("delete_my_account");
+    if (error) {
+      setDeleting(false);
+      setMessage("key:deleteFail");
+      return;
+    }
+    await supabase.auth.signOut();
+    setDeleting(false);
+    setConfirmText("");
+    setPassword("");
+    setNotice("key:deleted");
   }
 
   if (loading) {
-    return <main className="mx-auto max-w-md px-6 py-16">Loading...</main>;
+    return <main className="mx-auto max-w-md px-6 py-16">{a.loading}</main>;
   }
 
   if (user) {
     return (
       <main className="mx-auto max-w-md px-6 py-16">
-        <h1 className="font-display text-3xl font-extrabold">Your account</h1>
+        <h1 className="font-display text-3xl font-extrabold">{a.yourAccount}</h1>
         <p className="mt-4">
-          You are logged in as <strong>{nickname ?? "..."}</strong>.
+          {a.loggedInAs} <strong>{nickname ?? "..."}</strong>.
         </p>
         <button
           type="button"
           onClick={handleLogout}
           className="mt-6 rounded-full border-2 border-sea px-6 py-2 text-sm font-semibold text-sea hover:bg-sea hover:text-white"
         >
-          Log out
+          {a.logout}
         </button>
+
+        <section className="mt-12 rounded-2xl border border-red-300 p-5">
+          <h2 className="font-display text-lg font-bold">{a.deleteTitle}</h2>
+          <p className="mt-2 text-sm">{a.deleteText}</p>
+          <label htmlFor="confirm-delete" className="mt-4 block text-sm font-semibold">
+            {a.deleteLabel}
+          </label>
+          <input
+            id="confirm-delete"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-deep/25 bg-white px-3 py-2"
+            autoComplete="off"
+          />
+          {message && (
+            <p className="mt-3 text-sm font-semibold text-red-700">
+              {show(message)}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="mt-4 rounded-full border-2 border-red-700 px-6 py-2 text-sm font-semibold text-red-700 hover:bg-red-700 hover:text-white disabled:opacity-60"
+          >
+            {deleting ? a.deleting : a.deleteTitle}
+          </button>
+        </section>
       </main>
     );
   }
@@ -131,8 +199,12 @@ export default function AccountPage() {
   return (
     <main className="mx-auto max-w-md px-6 py-16">
       <h1 className="font-display text-3xl font-extrabold">
-        {mode === "login" ? "Log in" : "Create your account"}
+        {mode === "login" ? a.loginTitle : a.signupTitle}
       </h1>
+
+      {notice && (
+        <p className="mt-4 text-sm font-semibold text-sea">{show(notice)}</p>
+      )}
 
       <form
         onSubmit={mode === "login" ? handleLogin : handleSignUp}
@@ -141,7 +213,7 @@ export default function AccountPage() {
         {mode === "signup" && (
           <div>
             <label htmlFor="nickname" className="block text-sm font-semibold">
-              Nickname (shown on the leaderboard if you choose to join it)
+              {a.nickname}
             </label>
             <input
               id="nickname"
@@ -155,7 +227,7 @@ export default function AccountPage() {
 
         <div>
           <label htmlFor="email" className="block text-sm font-semibold">
-            Email
+            {a.email}
           </label>
           <input
             id="email"
@@ -170,7 +242,7 @@ export default function AccountPage() {
 
         <div>
           <label htmlFor="password" className="block text-sm font-semibold">
-            Password
+            {a.password}
           </label>
           <input
             id="password"
@@ -185,13 +257,7 @@ export default function AccountPage() {
 
         {mode === "signup" && (
           <div className="rounded-2xl bg-sand/60 p-4 text-sm">
-            <p>
-              We store your email, your nickname and your course progress.
-              Your email is never shown to other students. The leaderboard is
-              off unless you turn it on. For now, a forgotten password cannot
-              be reset, so choose one you will remember and do not reuse a
-              password from another site.
-            </p>
+            <p>{a.notice}</p>
             <label className="mt-3 flex items-start gap-2">
               <input
                 type="checkbox"
@@ -199,19 +265,21 @@ export default function AccountPage() {
                 onChange={(e) => setAgreed(e.target.checked)}
                 className="mt-1"
               />
-              <span>I have read this notice.</span>
+              <span>{a.agree}</span>
             </label>
           </div>
         )}
 
-        {message && <p className="text-sm font-semibold text-red-700">{message}</p>}
+        {message && (
+          <p className="text-sm font-semibold text-red-700">{show(message)}</p>
+        )}
 
         <button
           type="submit"
           disabled={busy}
           className="rounded-full bg-sea px-7 py-3 font-semibold text-white hover:bg-deep disabled:opacity-60"
         >
-          {busy ? "Please wait..." : mode === "login" ? "Log in" : "Create account"}
+          {busy ? a.wait : mode === "login" ? a.loginTitle : a.createAccount}
         </button>
       </form>
 
@@ -220,12 +288,11 @@ export default function AccountPage() {
         onClick={() => {
           setMode(mode === "login" ? "signup" : "login");
           setMessage("");
+          setNotice("");
         }}
         className="mt-6 text-sm font-semibold text-sea underline underline-offset-4"
       >
-        {mode === "login"
-          ? "No account yet? Create one"
-          : "Already have an account? Log in"}
+        {mode === "login" ? a.noAccount : a.haveAccount}
       </button>
     </main>
   );
